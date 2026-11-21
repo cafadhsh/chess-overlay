@@ -1,7 +1,9 @@
 package com.example.chesoverlay
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -10,8 +12,10 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
     
@@ -26,7 +30,22 @@ class MainActivity : AppCompatActivity() {
             } else {
                 startService(serviceIntent)
             }
+        } else {
+            Toast.makeText(this, "Захват экрана отменен", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private val requestNotifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            startCaptureIntent()
+        } else {
+            Toast.makeText(this, "Без разрешения на уведомления захват не запустится", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun startCaptureIntent() {
+        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        captureLauncher.launch(mgr.createScreenCaptureIntent())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,8 +73,15 @@ class MainActivity : AppCompatActivity() {
         val btnCapture = Button(this).apply {
             text = "2. Начать захват экрана"
             setOnClickListener {
-                val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                captureLauncher.launch(mgr.createScreenCaptureIntent())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                        startCaptureIntent()
+                    } else {
+                        requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                } else {
+                    startCaptureIntent()
+                }
             }
         }
         
