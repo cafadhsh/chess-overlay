@@ -3,6 +3,7 @@ package com.example.chesoverlay
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -10,7 +11,9 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.widget.Toast
 
 class ScreenCaptureService : Service() {
@@ -21,7 +24,6 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Создаем уведомление (Android требует его для служб)
         val channelId = "screen_capture_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
@@ -33,7 +35,6 @@ class ScreenCaptureService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .build()
 
-        // Запускаем как foreground service
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
@@ -74,7 +75,6 @@ class ScreenCaptureService : Service() {
                 val h = image.height
                 image.close()
                 
-                // Показываем всплывающее сообщение (Toast) с размером кадра
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(applicationContext, "Кадр захвачен: ${w}x${h}", Toast.LENGTH_SHORT).show()
                 }
