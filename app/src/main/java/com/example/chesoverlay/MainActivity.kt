@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -11,6 +12,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -58,34 +60,43 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Ловушка для ошибок: если приложение упадет, текст сохранится в файл
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val sw = StringWriter()
             throwable.printStackTrace(PrintWriter(sw))
             val file = File(filesDir, "crash.txt")
             file.writeText(sw.toString())
-            
             android.os.Process.killProcess(android.os.Process.myPid())
             System.exit(1)
         }
 
+        // Оборачиваем всё в ScrollView, чтобы можно было листать
+        val scrollView = ScrollView(this)
         val layout = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL 
             setPadding(50, 50, 50, 50)
         }
         
-        // Если ошибка была в прошлый раз - показываем её
         val crashFile = File(filesDir, "crash.txt")
         if (crashFile.exists()) {
             val errorText = crashFile.readText()
             val tvError = TextView(this).apply {
-                text = "ОШИБКА:\n$errorText"
+                text = "ОШИБКА (можно скопировать):\n\n$errorText"
                 textSize = 12f
-                setTextColor(android.graphics.Color.RED)
+                setTextColor(Color.RED)
+                // Это включает выделение и копирование текста
+                setTextIsSelectable(true)
                 setPadding(0, 0, 0, 50)
             }
             layout.addView(tvError)
-            crashFile.delete()
+            
+            val btnClear = Button(this).apply {
+                text = "Очистить ошибку"
+                setOnClickListener {
+                    crashFile.delete()
+                    recreate()
+                }
+            }
+            layout.addView(btnClear)
         }
         
         val tv = TextView(this).apply { text = "Chess Overlay готов" }
@@ -120,6 +131,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(tv)
         layout.addView(btnOverlay)
         layout.addView(btnCapture)
-        setContentView(layout)
+        
+        scrollView.addView(layout)
+        setContentView(scrollView)
     }
 }
