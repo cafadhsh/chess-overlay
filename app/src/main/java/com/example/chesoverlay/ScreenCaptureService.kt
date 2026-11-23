@@ -24,20 +24,19 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
 
-    override fun onCreate() {
-        super.onCreate()
-        // Переносим уведомление и запуск foreground сюда
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val channelId = "screen_capture_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-
-        // Для Android 14 обязателен PendingIntent, иначе будет краш
+        
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-
+        
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Анализ шахмат")
             .setContentText("Приложение смотрит на экран...")
@@ -47,21 +46,6 @@ class ScreenCaptureService : Service() {
             .build()
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-            } else {
-                startForeground(1, notification)
-            }
-        } catch (e: Throwable) {
-            logCrash("Ошибка startForeground", e)
-            stopSelf()
-        }
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        try {
             val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
             val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent?.getParcelableExtra("data", Intent::class.java)
@@ -70,16 +54,29 @@ class ScreenCaptureService : Service() {
                 intent?.getParcelableExtra("data")
             }
 
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                mediaProjection = mgr.getMediaProjection(resultCode, data)
-                startCapture()
-            } else {
-                logCrash("Пустые данные", Exception("resultCode: $resultCode"))
+            if (resultCode != Activity.RESULT_OK || data == null) {
+                logCrash("Нет данных", Exception("resultCode: $resultCode"))
                 stopSelf()
+                return START_NOT_STICKY
             }
+
+            val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            
+            // 1. СНАЧАЛА получаем токен (Требование Android 14)
+            mediaProjection = mgr.getMediaProjection(resultCode, data)
+
+            // 2. ЗАТЕМ запускаем foreground
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else {
+                startForeground(1, notification)
+            }
+
+            // 3. И только теперь запускаем захват
+            startCapture()
+
         } catch (e: Throwable) {
-            logCrash("Ошибка в onStartCommand", e)
+            logCrash("Падение в onStartCommand", e)
             stopSelf()
         }
         return START_STICKY
