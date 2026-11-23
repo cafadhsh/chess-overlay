@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.widget.Toast
-import androidx.core.app.NotificationCompat
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -27,28 +26,28 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val channelId = "screen_capture_channel"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-        
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Анализ шахмат")
-            .setContentText("Приложение смотрит на экран...")
-            .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        // САМОЕ ВАЖНОЕ: вызываем startForeground в первую очередь!
+        showToast("Служба стартовала!")
         try {
+            val channelId = "screen_capture_channel"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
+                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            }
+            
+            val notification = Notification.Builder(this, channelId)
+                .setContentTitle("Анализ шахмат")
+                .setContentText("Приложение смотрит на экран...")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .build()
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
             } else {
                 startForeground(1, notification)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             logCrash("Ошибка startForeground", e)
+            showToast("Ошибка FG: ${e.message}")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -62,18 +61,21 @@ class ScreenCaptureService : Service() {
                 val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjection = mgr.getMediaProjection(resultCode, data)
                 startCapture()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 logCrash("Ошибка getMediaProjection", e)
+                showToast("Ошибка MP: ${e.message}")
                 stopSelf()
             }
         } else {
-            logCrash("Пустые данные захвата", Exception("resultCode или data == null"))
+            logCrash("Пустые данные", Exception("resultCode: $resultCode, data: $data"))
+            showToast("Пустые данные захвата")
             stopSelf()
         }
         return START_STICKY
     }
 
     private fun startCapture() {
+        showToast("Запуск захвата...")
         val metrics = resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -94,15 +96,18 @@ class ScreenCaptureService : Service() {
                 val w = image.width
                 val h = image.height
                 image.close()
-                
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(applicationContext, "Кадр захвачен: ${w}x${h}", Toast.LENGTH_SHORT).show()
-                }
+                showToast("Кадр захвачен: ${w}x${h}")
             }
         }, null)
     }
 
-    private fun logCrash(prefix: String, e: Exception) {
+    private fun showToast(msg: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun logCrash(prefix: String, e: Throwable) {
         val sw = StringWriter()
         e.printStackTrace(PrintWriter(sw))
         val file = File(filesDir, "crash.txt")
