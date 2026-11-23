@@ -16,6 +16,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class MainActivity : AppCompatActivity() {
     
@@ -44,16 +47,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startCaptureIntent() {
-        val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        captureLauncher.launch(mgr.createScreenCaptureIntent())
+        try {
+            val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            captureLauncher.launch(mgr.createScreenCaptureIntent())
+        } catch (e: Exception) {
+            Toast.makeText(this, "Ошибка запуска: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Ловушка для ошибок: если приложение упадет, текст сохранится в файл
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val sw = StringWriter()
+            throwable.printStackTrace(PrintWriter(sw))
+            val file = File(filesDir, "crash.txt")
+            file.writeText(sw.toString())
+            
+            android.os.Process.killProcess(android.os.Process.myPid())
+            System.exit(1)
+        }
+
         val layout = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL 
             setPadding(50, 50, 50, 50)
+        }
+        
+        // Если ошибка была в прошлый раз - показываем её
+        val crashFile = File(filesDir, "crash.txt")
+        if (crashFile.exists()) {
+            val errorText = crashFile.readText()
+            val tvError = TextView(this).apply {
+                text = "ОШИБКА:\n$errorText"
+                textSize = 12f
+                setTextColor(android.graphics.Color.RED)
+                setPadding(0, 0, 0, 50)
+            }
+            layout.addView(tvError)
+            crashFile.delete()
         }
         
         val tv = TextView(this).apply { text = "Chess Overlay готов" }

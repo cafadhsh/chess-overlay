@@ -24,31 +24,40 @@ class ScreenCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val channelId = "screen_capture_channel"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-        val notification = Notification.Builder(this, channelId)
-            .setContentTitle("Анализ шахмат")
-            .setContentText("Приложение смотрит на экран...")
-            .setSmallIcon(android.R.drawable.ic_menu_view)
-            .build()
+        try {
+            val channelId = "screen_capture_channel"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
+                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            }
+            val notification = Notification.Builder(this, channelId)
+                .setContentTitle("Анализ шахмат")
+                .setContentText("Приложение смотрит на экран...")
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else {
-            startForeground(1, notification)
-        }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else {
+                startForeground(1, notification)
+            }
 
-        val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
-        @Suppress("DEPRECATION")
-        val data = intent?.getParcelableExtra<Intent>("data")
+            val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
+            @Suppress("DEPRECATION")
+            val data = intent?.getParcelableExtra<Intent>("data")
 
-        if (resultCode == Activity.RESULT_OK && data != null) {
-            val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjection = mgr.getMediaProjection(resultCode, data)
-            startCapture()
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjection = mgr.getMediaProjection(resultCode, data)
+                startCapture()
+            }
+        } catch (e: Exception) {
+            // Если служба упадет, текст ошибки тоже запишется в файл
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            val file = java.io.File(filesDir, "crash.txt")
+            file.writeText(sw.toString())
+            stopSelf()
         }
         return START_STICKY
     }
