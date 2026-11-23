@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -23,23 +24,29 @@ class ScreenCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onCreate() {
+        super.onCreate()
+        // Переносим уведомление и запуск foreground сюда
+        val channelId = "screen_capture_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        showToast("Служба стартовала!")
+        // Для Android 14 обязателен PendingIntent, иначе будет краш
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Анализ шахмат")
+            .setContentText("Приложение смотрит на экран...")
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
         try {
-            val channelId = "screen_capture_channel"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(channelId, "Захват экрана", NotificationManager.IMPORTANCE_LOW)
-                getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-            }
-            
-            val notification = Notification.Builder(this, channelId)
-                .setContentTitle("Анализ шахмат")
-                .setContentText("Приложение смотрит на экран...")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
-                .build()
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
             } else {
@@ -47,35 +54,38 @@ class ScreenCaptureService : Service() {
             }
         } catch (e: Throwable) {
             logCrash("Ошибка startForeground", e)
-            showToast("Ошибка FG: ${e.message}")
             stopSelf()
-            return START_NOT_STICKY
         }
+    }
 
-        val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
-        @Suppress("DEPRECATION")
-        val data = intent?.getParcelableExtra<Intent>("data")
+    override fun onBind(intent: Intent?): IBinder? = null
 
-        if (resultCode == Activity.RESULT_OK && data != null) {
-            try {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        try {
+            val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
+            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent?.getParcelableExtra("data", Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent?.getParcelableExtra("data")
+            }
+
+            if (resultCode == Activity.RESULT_OK && data != null) {
                 val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjection = mgr.getMediaProjection(resultCode, data)
                 startCapture()
-            } catch (e: Throwable) {
-                logCrash("Ошибка getMediaProjection", e)
-                showToast("Ошибка MP: ${e.message}")
+            } else {
+                logCrash("Пустые данные", Exception("resultCode: $resultCode"))
                 stopSelf()
             }
-        } else {
-            logCrash("Пустые данные", Exception("resultCode: $resultCode, data: $data"))
-            showToast("Пустые данные захвата")
+        } catch (e: Throwable) {
+            logCrash("Ошибка в onStartCommand", e)
             stopSelf()
         }
         return START_STICKY
     }
 
     private fun startCapture() {
-        showToast("Запуск захвата...")
         val metrics = resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -96,15 +106,11 @@ class ScreenCaptureService : Service() {
                 val w = image.width
                 val h = image.height
                 image.close()
-                showToast("Кадр захвачен: ${w}x${h}")
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(applicationContext, "Кадр захвачен: ${w}x${h}", Toast.LENGTH_SHORT).show()
+                }
             }
         }, null)
-    }
-
-    private fun showToast(msg: String) {
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
-        }
     }
 
     private fun logCrash(prefix: String, e: Throwable) {
